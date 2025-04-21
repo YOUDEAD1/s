@@ -165,10 +165,18 @@ class StartHelpHandlers:
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await update.message.reply_text(
-            text=welcome_text,
-            reply_markup=reply_markup
-        )
+        # تعديل: التحقق من وجود update.message قبل استخدامه
+        if update.message:
+            await update.message.reply_text(
+                text=welcome_text,
+                reply_markup=reply_markup
+            )
+        elif update.callback_query:
+            # إذا كان التحديث من خلال callback_query، استخدم edit_message_text
+            await update.callback_query.edit_message_text(
+                text=welcome_text,
+                reply_markup=reply_markup
+            )
 
     async def help_command(self, update: Update, context: CallbackContext):
         """Handle the /help command with interactive buttons"""
@@ -204,10 +212,18 @@ class StartHelpHandlers:
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await update.message.reply_text(
-            text=help_text,
-            reply_markup=reply_markup
-        )
+        # تعديل: التحقق من وجود update.message قبل استخدامه
+        if update.message:
+            await update.message.reply_text(
+                text=help_text,
+                reply_markup=reply_markup
+            )
+        elif update.callback_query:
+            # إذا كان التحديث من خلال callback_query، استخدم edit_message_text
+            await update.callback_query.edit_message_text(
+                text=help_text,
+                reply_markup=reply_markup
+            )
 
     async def start_help_callback(self, update: Update, context: CallbackContext):
         """Handle start and help related callbacks"""
@@ -226,6 +242,26 @@ class StartHelpHandlers:
         if data == "start_subscription":
             # تنفيذ إجراء طلب الاشتراك مباشرة
             if hasattr(context.bot, 'subscription_handlers') and hasattr(context.bot.subscription_handlers, 'subscription_command'):
+                # تعديل: إنشاء رسالة وهمية لتمرير إلى معالج الاشتراك
+                class DummyMessage:
+                    def __init__(self, chat_id, from_user):
+                        self.chat_id = chat_id
+                        self.from_user = from_user
+
+                    async def reply_text(self, text, reply_markup=None, parse_mode=None):
+                        # استبدال رسالة الاستعلام بدلاً من إرسال رسالة جديدة
+                        await query.edit_message_text(
+                            text=text,
+                            reply_markup=reply_markup,
+                            parse_mode=parse_mode
+                        )
+
+                # إنشاء رسالة وهمية
+                update.message = DummyMessage(
+                    chat_id=update.effective_chat.id,
+                    from_user=update.effective_user
+                )
+                
                 await context.bot.subscription_handlers.subscription_command(update, context)
             else:
                 # إذا لم يكن معالج الاشتراك متاحاً، عرض رسالة بديلة
@@ -240,6 +276,26 @@ class StartHelpHandlers:
         elif data == "start_login":
             # تنفيذ إجراء تسجيل الدخول مباشرة
             if HAS_AUTH_SERVICE and hasattr(context.bot, 'auth_handlers') and hasattr(context.bot.auth_handlers, 'login_command'):
+                # تعديل: إنشاء رسالة وهمية لتمرير إلى معالج تسجيل الدخول
+                class DummyMessage:
+                    def __init__(self, chat_id, from_user):
+                        self.chat_id = chat_id
+                        self.from_user = from_user
+
+                    async def reply_text(self, text, reply_markup=None, parse_mode=None):
+                        # استبدال رسالة الاستعلام بدلاً من إرسال رسالة جديدة
+                        await query.edit_message_text(
+                            text=text,
+                            reply_markup=reply_markup,
+                            parse_mode=parse_mode
+                        )
+
+                # إنشاء رسالة وهمية
+                update.message = DummyMessage(
+                    chat_id=update.effective_chat.id,
+                    from_user=update.effective_user
+                )
+                
                 await context.bot.auth_handlers.login_command(update, context)
             else:
                 # إذا لم يكن معالج تسجيل الدخول متاحاً، بدء محادثة تسجيل الدخول
@@ -254,6 +310,26 @@ class StartHelpHandlers:
         elif data == "start_generate_session":
             # تنفيذ إجراء إنشاء جلسة مباشرة
             if HAS_AUTH_SERVICE and hasattr(context.bot, 'auth_handlers') and hasattr(context.bot.auth_handlers, 'generate_session_command'):
+                # تعديل: إنشاء رسالة وهمية لتمرير إلى معالج إنشاء الجلسة
+                class DummyMessage:
+                    def __init__(self, chat_id, from_user):
+                        self.chat_id = chat_id
+                        self.from_user = from_user
+
+                    async def reply_text(self, text, reply_markup=None, parse_mode=None):
+                        # استبدال رسالة الاستعلام بدلاً من إرسال رسالة جديدة
+                        await query.edit_message_text(
+                            text=text,
+                            reply_markup=reply_markup,
+                            parse_mode=parse_mode
+                        )
+
+                # إنشاء رسالة وهمية
+                update.message = DummyMessage(
+                    chat_id=update.effective_chat.id,
+                    from_user=update.effective_user
+                )
+                
                 await context.bot.auth_handlers.generate_session_command(update, context)
             else:
                 # إذا لم يكن معالج إنشاء الجلسة متاحاً، بدء محادثة إنشاء الجلسة
@@ -268,6 +344,26 @@ class StartHelpHandlers:
         elif data == "start_groups":
             # تنفيذ إجراء إدارة المجموعات مباشرة
             if hasattr(context.bot, 'group_handlers') and hasattr(context.bot.group_handlers, 'groups_command'):
+                # تعديل: إنشاء رسالة وهمية لتمرير إلى معالج المجموعات
+                class DummyMessage:
+                    def __init__(self, chat_id, from_user):
+                        self.chat_id = chat_id
+                        self.from_user = from_user
+
+                    async def reply_text(self, text, reply_markup=None, parse_mode=None):
+                        # استبدال رسالة الاستعلام بدلاً من إرسال رسالة جديدة
+                        await query.edit_message_text(
+                            text=text,
+                            reply_markup=reply_markup,
+                            parse_mode=parse_mode
+                        )
+
+                # إنشاء رسالة وهمية
+                update.message = DummyMessage(
+                    chat_id=update.effective_chat.id,
+                    from_user=update.effective_user
+                )
+                
                 await context.bot.group_handlers.groups_command(update, context)
             else:
                 # إذا لم يكن معالج المجموعات متاحاً، عرض قائمة المجموعات
@@ -342,6 +438,26 @@ class StartHelpHandlers:
         elif data == "start_responses":
             # تنفيذ إجراء الردود التلقائية مباشرة
             if HAS_RESPONSE_SERVICE and hasattr(context.bot, 'response_handlers') and hasattr(context.bot.response_handlers, 'auto_response_command'):
+                # تعديل: إنشاء رسالة وهمية لتمرير إلى معالج الردود التلقائية
+                class DummyMessage:
+                    def __init__(self, chat_id, from_user):
+                        self.chat_id = chat_id
+                        self.from_user = from_user
+
+                    async def reply_text(self, text, reply_markup=None, parse_mode=None):
+                        # استبدال رسالة الاستعلام بدلاً من إرسال رسالة جديدة
+                        await query.edit_message_text(
+                            text=text,
+                            reply_markup=reply_markup,
+                            parse_mode=parse_mode
+                        )
+
+                # إنشاء رسالة وهمية
+                update.message = DummyMessage(
+                    chat_id=update.effective_chat.id,
+                    from_user=update.effective_user
+                )
+                
                 await context.bot.response_handlers.auto_response_command(update, context)
             else:
                 # إذا لم يكن معالج الردود التلقائية متاحاً، عرض رسالة بديلة
@@ -356,16 +472,33 @@ class StartHelpHandlers:
         elif data == "start_referral":
             # تنفيذ إجراء الإحالة مباشرة
             if HAS_REFERRAL_SERVICE and hasattr(context.bot, 'referral_handlers') and hasattr(context.bot.referral_handlers, 'referral_command'):
+                # تعديل: إنشاء رسالة وهمية لتمرير إلى معالج الإحالة
+                class DummyMessage:
+                    def __init__(self, chat_id, from_user):
+                        self.chat_id = chat_id
+                        self.from_user = from_user
+
+                    async def reply_text(self, text, reply_markup=None, parse_mode=None):
+                        # استبدال رسالة الاستعلام بدلاً من إرسال رسالة جديدة
+                        await query.edit_message_text(
+                            text=text,
+                            reply_markup=reply_markup,
+                            parse_mode=parse_mode
+                        )
+
+                # إنشاء رسالة وهمية
+                update.message = DummyMessage(
+                    chat_id=update.effective_chat.id,
+                    from_user=update.effective_user
+                )
+                
                 await context.bot.referral_handlers.referral_command(update, context)
             else:
                 # إذا لم يكن معالج الإحالة متاحاً، عرض رسالة بديلة
-                user_id = update.effective_user.id
-                referral_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
-
                 keyboard = [[InlineKeyboardButton("🔙 العودة", callback_data="start_back")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await query.edit_message_text(
-                    text=f"🔗 *رابط الإحالة الخاص بك*\n\n`{referral_link}`\n\nشارك هذا الرابط مع أصدقائك للحصول على مكافآت!",
+                    text="🔗 *الإحالة*\n\nيمكنك الحصول على رابط إحالة خاص بك لدعوة أصدقائك.",
                     reply_markup=reply_markup,
                     parse_mode="Markdown"
                 )
@@ -373,78 +506,102 @@ class StartHelpHandlers:
         elif data == "start_refresh_groups":
             # تنفيذ إجراء تحديث المجموعات مباشرة
             if hasattr(context.bot, 'group_handlers') and hasattr(context.bot.group_handlers, 'refresh_groups_command'):
+                # تعديل: إنشاء رسالة وهمية لتمرير إلى معالج تحديث المجموعات
+                class DummyMessage:
+                    def __init__(self, chat_id, from_user):
+                        self.chat_id = chat_id
+                        self.from_user = from_user
+
+                    async def reply_text(self, text, reply_markup=None, parse_mode=None):
+                        # استبدال رسالة الاستعلام بدلاً من إرسال رسالة جديدة
+                        await query.edit_message_text(
+                            text=text,
+                            reply_markup=reply_markup,
+                            parse_mode=parse_mode
+                        )
+
+                # إنشاء رسالة وهمية
+                update.message = DummyMessage(
+                    chat_id=update.effective_chat.id,
+                    from_user=update.effective_user
+                )
+                
                 await context.bot.group_handlers.refresh_groups_command(update, context)
             else:
-                # إذا لم يكن معالج تحديث المجموعات متاحاً، استخدم خدمة المجموعات مباشرة
-                user_id = update.effective_user.id
-
-                # إرسال رسالة تحميل
-                await query.edit_message_text(
-                    text="⏳ جاري جلب المجموعات من تيليجرام..."
-                )
-
-                # جلب المجموعات
-                success, result_message, groups = await self.group_service.fetch_user_groups(user_id)
-
-                if success:
-                    # إنشاء لوحة مفاتيح مع المجموعات
-                    keyboard = []
-                    for group in groups:
-                        group_id = str(group.get('id'))
-                        group_name = group.get('title', 'مجموعة بدون اسم')
-                        keyboard.append([InlineKeyboardButton(f"🟢 {group_name}", callback_data=f"group:{group_id}")])
-
-                    keyboard.append([InlineKeyboardButton("🔙 العودة", callback_data="start_back")])
-
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    await query.edit_message_text(
-                        text=f"✅ {result_message}\n\n👥 المجموعات المتاحة:",
-                        reply_markup=reply_markup
-                    )
-                else:
-                    # عرض رسالة الخطأ
-                    keyboard = [[InlineKeyboardButton("🔙 العودة", callback_data="start_back")]]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    await query.edit_message_text(
-                        text=f"❌ {result_message}",
-                        reply_markup=reply_markup
-                    )
-
-        elif data == "start_status":
-            # تنفيذ إجراء التحقق من حالة النشر مباشرة
-            if hasattr(context.bot, 'posting_handlers') and hasattr(context.bot.posting_handlers, 'check_status'):
-                await context.bot.posting_handlers.check_status(update, context)
-            else:
-                # إذا لم يكن معالج حالة النشر متاحاً، استخدم خدمة النشر مباشرة
-                user_id = update.effective_user.id
-                status = self.posting_service.get_posting_status(user_id)
-
+                # إذا لم يكن معالج تحديث المجموعات متاحاً، عرض رسالة بديلة
                 keyboard = [[InlineKeyboardButton("🔙 العودة", callback_data="start_back")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.edit_message_text(
+                    text="🔄 *تحديث المجموعات*\n\nجاري تحديث قائمة المجموعات...",
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
+                )
 
-                if status and status.get('is_active', False):
-                    await query.edit_message_text(
-                        text=f"📊 *حالة النشر*\n\n✅ النشر نشط حالياً\nتم نشر {status.get('posts_count', 0)} رسالة\nبدأ في: {status.get('start_time', 'غير معروف')}",
-                        reply_markup=reply_markup,
-                        parse_mode="Markdown"
-                    )
-                else:
-                    await query.edit_message_text(
-                        text="📊 *حالة النشر*\n\n❌ لا توجد عملية نشر نشطة حالياً.",
-                        reply_markup=reply_markup,
-                        parse_mode="Markdown"
-                    )
+        elif data == "start_status":
+            # تنفيذ إجراء عرض حالة النشر مباشرة
+            if hasattr(context.bot, 'posting_handlers') and hasattr(context.bot.posting_handlers, 'status_command'):
+                # تعديل: إنشاء رسالة وهمية لتمرير إلى معالج حالة النشر
+                class DummyMessage:
+                    def __init__(self, chat_id, from_user):
+                        self.chat_id = chat_id
+                        self.from_user = from_user
+
+                    async def reply_text(self, text, reply_markup=None, parse_mode=None):
+                        # استبدال رسالة الاستعلام بدلاً من إرسال رسالة جديدة
+                        await query.edit_message_text(
+                            text=text,
+                            reply_markup=reply_markup,
+                            parse_mode=parse_mode
+                        )
+
+                # إنشاء رسالة وهمية
+                update.message = DummyMessage(
+                    chat_id=update.effective_chat.id,
+                    from_user=update.effective_user
+                )
+                
+                await context.bot.posting_handlers.status_command(update, context)
+            else:
+                # إذا لم يكن معالج حالة النشر متاحاً، عرض رسالة بديلة
+                keyboard = [[InlineKeyboardButton("🔙 العودة", callback_data="start_back")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.edit_message_text(
+                    text="📊 *حالة النشر*\n\nلا توجد عمليات نشر نشطة حالياً.",
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
+                )
 
         elif data == "start_admin":
             # تنفيذ إجراء لوحة المشرف مباشرة
             if hasattr(context.bot, 'admin_handlers') and hasattr(context.bot.admin_handlers, 'admin_command'):
+                # تعديل: إنشاء رسالة وهمية لتمرير إلى معالج لوحة المشرف
+                class DummyMessage:
+                    def __init__(self, chat_id, from_user):
+                        self.chat_id = chat_id
+                        self.from_user = from_user
+
+                    async def reply_text(self, text, reply_markup=None, parse_mode=None):
+                        # استبدال رسالة الاستعلام بدلاً من إرسال رسالة جديدة
+                        await query.edit_message_text(
+                            text=text,
+                            reply_markup=reply_markup,
+                            parse_mode=parse_mode
+                        )
+
+                # إنشاء رسالة وهمية
+                update.message = DummyMessage(
+                    chat_id=update.effective_chat.id,
+                    from_user=update.effective_user
+                )
+                
                 await context.bot.admin_handlers.admin_command(update, context)
             else:
-                # إذا لم يكن معالج لوحة المشرف متاحاً، عرض قائمة أوامر المشرف
+                # إذا لم يكن معالج لوحة المشرف متاحاً، عرض رسالة بديلة
                 keyboard = [
                     [InlineKeyboardButton("👥 إدارة المستخدمين", callback_data="admin_users")],
                     [InlineKeyboardButton("📢 إرسال رسالة جماعية", callback_data="admin_broadcast")],
-                    [InlineKeyboardButton("📊 إحصائيات", callback_data="admin_stats")],
+                    [InlineKeyboardButton("🔔 إعدادات الاشتراك الإجباري", callback_data="admin_channel_subscription")],
+                    [InlineKeyboardButton("📊 إحصائيات", callback_data="admin_statistics")],
                     [InlineKeyboardButton("🔙 العودة", callback_data="start_back")]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -457,10 +614,107 @@ class StartHelpHandlers:
         # إضافة معالج زر العودة
         elif data == "start_back":
             # العودة إلى قائمة البداية
-            await self.start_command(update, context)
+            # تعديل: استخدام edit_message_text بدلاً من start_command
+            # لتجنب الخطأ عند استخدام update.message الذي قد يكون None
+            welcome_text = f"👋 مرحباً {update.effective_user.first_name}!\n\n"
+
+            if is_admin:
+                welcome_text += "🔰 أنت مسجل كمشرف في النظام.\n\n"
+
+            welcome_text += "🤖 أنا بوت احترافي للنشر التلقائي في مجموعات تيليجرام.\n\n"
+
+            # Create keyboard with options
+            keyboard = []
+
+            # Add referral button for all users (new feature)
+            keyboard.append([
+                InlineKeyboardButton("🔗 الإحالة", callback_data="start_referral")
+            ])
+
+            if has_subscription:
+                if db_user.subscription_end:
+                    end_date = db_user.subscription_end.strftime('%Y-%m-%d')
+                    welcome_text += f"✅ لديك اشتراك نشط حتى: {end_date}\n\n"
+                else:
+                    welcome_text += f"✅ لديك اشتراك نشط غير محدود المدة\n\n"
+
+                # Check if user is logged in
+                session_string = None
+                if self.auth_service is not None:
+                    session_string = self.auth_service.get_user_session(user_id)
+                if session_string:
+                    welcome_text += "✅ أنت مسجل الدخول بالفعل ويمكنك استخدام جميع ميزات البوت.\n\n"
+
+                    # Add main feature buttons
+                    keyboard.append([
+                        InlineKeyboardButton("👥 المجموعات", callback_data="start_groups"),
+                        InlineKeyboardButton("📝 النشر", callback_data="start_post")
+                    ])
+
+                    keyboard.append([
+                        InlineKeyboardButton("🤖 الردود التلقائية", callback_data="start_responses")
+                    ])
+
+                    # Add account management buttons
+                    keyboard.append([
+                        InlineKeyboardButton("🔄 تحديث المجموعات", callback_data="start_refresh_groups"),
+                        InlineKeyboardButton("📊 حالة النشر", callback_data="start_status")
+                    ])
+
+                    keyboard.append([
+                        InlineKeyboardButton("📋 المساعدة", callback_data="start_help")
+                    ])
+
+                    # Add admin button if user is admin
+                    if is_admin:
+                        keyboard.append([
+                            InlineKeyboardButton("👨‍💼 لوحة المشرف", callback_data="start_admin")
+                        ])
+                else:
+                    welcome_text += "⚠️ أنت لم تقم بتسجيل الدخول بعد.\n\n"
+
+                    # Add login buttons
+                    keyboard.append([
+                        InlineKeyboardButton("🔑 تسجيل الدخول", callback_data="start_login"),
+                        InlineKeyboardButton("🔐 إنشاء Session", callback_data="start_generate_session")
+                    ])
+
+                    keyboard.append([
+                        InlineKeyboardButton("📋 المساعدة", callback_data="start_help")
+                    ])
+
+                    # Add admin button if user is admin
+                    if is_admin:
+                        keyboard.append([
+                            InlineKeyboardButton("👨‍💼 لوحة المشرف", callback_data="start_admin")
+                        ])
+            else:
+                welcome_text += "⚠️ ليس لديك اشتراك نشط.\n\n"
+
+                # Create keyboard with subscription option
+                keyboard.append([
+                    InlineKeyboardButton("🔔 طلب اشتراك", callback_data="start_subscription")
+                ])
+
+                keyboard.append([
+                    InlineKeyboardButton("📋 المساعدة", callback_data="start_help")
+                ])
+
+                # Add admin button if user is admin
+                if is_admin:
+                    keyboard.append([
+                        InlineKeyboardButton("👨‍💼 لوحة المشرف", callback_data="start_admin")
+                    ])
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                text=welcome_text,
+                reply_markup=reply_markup
+            )
 
         elif data == "start_help":
             # Redirect to help command
+            # تعديل: استخدام help_command مباشرة بدلاً من إعادة توجيه الأمر
             await self.help_command(update, context)
 
         # Handle help callbacks
@@ -616,8 +870,38 @@ class StartHelpHandlers:
                 )
             except Exception as e:
                 # If there's an error, just send a new help message
-                await self.help_command(update, context)
+                # تعديل: استخدام edit_message_text بدلاً من help_command
+                help_text = "📋 قائمة الأوامر المتاحة:\n\n"
+
+                # Create keyboard with help categories
+                keyboard = [
+                    [InlineKeyboardButton("🔑 أوامر الحساب", callback_data="help_account")],
+                    [InlineKeyboardButton("👥 أوامر المجموعات", callback_data="help_groups")],
+                    [InlineKeyboardButton("📝 أوامر النشر", callback_data="help_posting")],
+                    [InlineKeyboardButton("🤖 أوامر الردود", callback_data="help_responses")],
+                    [InlineKeyboardButton("🔗 أوامر الإحالات", callback_data="help_referrals")]
+                ]
+
+                # Add admin button if user is admin
+                if is_admin:
+                    keyboard.append([
+                        InlineKeyboardButton("👨‍💼 أوامر المشرف", callback_data="help_admin")
+                    ])
+
+                # Add back to start button
+                keyboard.append([
+                    InlineKeyboardButton("🔙 العودة للبداية", callback_data="help_back_to_start")
+                ])
+
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
+                await query.edit_message_text(
+                    text=help_text,
+                    reply_markup=reply_markup
+                )
 
         elif data == "help_back_to_start":
             # Go back to start command
-            await self.start_command(update, context)
+            # تعديل: استخدام start_back بدلاً من start_command
+            # لتجنب الخطأ عند استخدام update.message الذي قد يكون None
+            await self.start_help_callback(update, context)
