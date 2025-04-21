@@ -343,9 +343,10 @@ class AuthHandlers:
         except Exception as e:
             self.logger.error(f"Error creating empty session string: {str(e)}")
 
+        # تعديل: تغيير رسالة طلب رمز التحقق لتوضيح الصيغة المطلوبة
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"{message}\n\nيرجى إدخال رمز التحقق الذي تم إرساله إلى هاتفك (أرقام فقط):"
+            text=f"{message}\n\nيرجى إدخال رمز التحقق الذي تم إرساله إلى هاتفك بالصيغة التالية: 1 2 3 4 5"
         )
 
         return VERIFICATION_CODE
@@ -356,12 +357,24 @@ class AuthHandlers:
         user_id = update.effective_user.id
         code = update.message.text.strip()
 
+        # تعديل: تنسيق الرمز بشكل صحيح قبل تنظيفه
+        # إذا كان الرمز لا يحتوي على مسافات، نضيف مسافات بين الأرقام
+        if ' ' not in code:
+            # إزالة أي أحرف غير رقمية أولاً
+            digits_only = re.sub(r'\D', '', code)
+            # إضافة مسافات بين الأرقام
+            formatted_code = ' '.join(digits_only)
+            self.logger.info(f"Formatted verification code: {formatted_code}")
+        else:
+            formatted_code = code
+
         # Clean the code - remove any non-digit characters
-        code = re.sub(r'\D', '', code)
-        self.logger.info(f"Cleaned verification code: {code}")
+        cleaned_code = re.sub(r'\D', '', code)
+        self.logger.info(f"Original verification code: {code}")
+        self.logger.info(f"Cleaned verification code: {cleaned_code}")
 
         # Store verification code in user_data
-        context.user_data['verification_code'] = code
+        context.user_data['verification_code'] = cleaned_code
 
         # Get phone_code_hash from user_data
         phone_code_hash = context.user_data.get('phone_code_hash')
@@ -378,7 +391,7 @@ class AuthHandlers:
             context.user_data['api_id'],
             context.user_data['api_hash'],
             context.user_data['phone_number'],
-            code,
+            cleaned_code,
             phone_code_hash=phone_code_hash,
             proxy=proxy
         )
@@ -420,16 +433,18 @@ class AuthHandlers:
             return PASSWORD
         elif "انتهت صلاحية رمز التحقق" in message or "expired" in message:
             # Code expired, a new one has been requested
+            # تعديل: تغيير رسالة طلب رمز التحقق الجديد لتوضيح الصيغة المطلوبة
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="⚠️ انتهت صلاحية رمز التحقق. تم إرسال رمز جديد إلى هاتفك.\n\nيرجى إدخال الرمز الجديد (أرقام فقط):"
+                text="⚠️ انتهت صلاحية رمز التحقق. تم إرسال رمز جديد إلى هاتفك.\n\nيرجى إدخال الرمز الجديد بالصيغة التالية: 1 2 3 4 5"
             )
             return VERIFICATION_CODE
         else:
             # Login failed for other reasons
+            # تعديل: تغيير رسالة الخطأ لتوضيح الصيغة المطلوبة
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"❌ {message}\n\nيرجى إدخال رمز التحقق مرة أخرى (أرقام فقط):"
+                text=f"❌ {message}\n\nيرجى إدخال رمز التحقق مرة أخرى بالصيغة التالية: 1 2 3 4 5"
             )
             return VERIFICATION_CODE
 
@@ -608,17 +623,15 @@ class AuthHandlers:
         # Create keyboard with session type options
         keyboard = [
             [
-                InlineKeyboardButton("جلسة فارغة (بدون تسجيل دخول)", callback_data="session_type_empty")
-            ],
-            [
-                InlineKeyboardButton("جلسة جديدة (مع تسجيل دخول)", callback_data="session_type_full")
+                InlineKeyboardButton("📱 User Session", callback_data="session_type_user"),
+                InlineKeyboardButton("🤖 Bot Session", callback_data="session_type_bot")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await context.bot.send_message(
             chat_id=chat_id,
-            text="اختر نوع الجلسة:",
+            text="🔄 يرجى اختيار نوع الجلسة:",
             reply_markup=reply_markup
         )
 
@@ -629,43 +642,15 @@ class AuthHandlers:
         query = update.callback_query
         await query.answer()
 
-        session_type = query.data.split('_')[2]
+        session_type = query.data.split('_')[-1]
         context.user_data['session_type'] = session_type
 
-        if session_type == 'empty':
-            # Create empty session
-            try:
-                # Create client with provided credentials
-                client = TelegramClient(StringSession(), context.user_data['api_id'], context.user_data['api_hash'])
-
-                # Connect without logging in
-                await client.connect()
-
-                # Get session string
-                session_string = client.session.save()
-
-                # Disconnect
-                await client.disconnect()
-
-                # Send session string to user
-                await query.edit_message_text(
-                    text="✅ تم إنشاء جلسة فارغة بنجاح!\n\n"
-                         f"🆔 Session ID: `{session_string}`\n\n"
-                         "⚠️ لا تشارك هذه الجلسة مع أي شخص آخر!",
-                    parse_mode='Markdown'
-                )
-
-                return ConversationHandler.END
-
-            except Exception as e:
-                self.logger.error(f"Error creating empty session: {str(e)}")
-                await query.edit_message_text(
-                    text=f"❌ حدث خطأ أثناء إنشاء الجلسة: {str(e)}\n\n"
-                         "يرجى المحاولة مرة أخرى لاحقاً."
-                )
-                return ConversationHandler.END
+        if session_type == 'bot':
+            await query.edit_message_text(
+                text="🤖 يرجى إدخال Bot Token الخاص بك (يمكنك الحصول عليه من @BotFather):"
+            )
+            return VERIFICATION_CODE
         else:
-            # Full session with login
             await query.edit_message_text(
                 text="📱 يرجى إدخال رقم هاتفك بالصيغة الدولية (مثال: +966123456789):"
             )
@@ -687,57 +672,31 @@ class AuthHandlers:
         # Store phone number in user_data
         context.user_data['phone_number'] = phone_number
 
-        try:
-            # Create client with provided credentials
-            client = TelegramClient(StringSession(), context.user_data['api_id'], context.user_data['api_hash'])
+        # Show typing action to indicate processing
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-            # Connect to Telegram
+        # Create client with provided credentials
+        client = None
+        try:
+            client = TelegramClient(StringSession(), context.user_data['api_id'], context.user_data['api_hash'])
             await client.connect()
 
-            # Check if already logged in
-            if await client.is_user_authorized():
-                # Already logged in, get session string
-                session_string = client.session.save()
-                await client.disconnect()
-
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="✅ أنت مسجل دخول بالفعل! تم استخراج الجلسة بنجاح.\n\n"
-                         f"🔐 Session String: `{session_string}`\n\n"
-                         "⚠️ لا تشارك هذه الجلسة مع أي شخص آخر!",
-                    parse_mode='Markdown'
-                )
-
-                return ConversationHandler.END
-
             # Send code request
+            await client.send_code_request(phone_number)
+
+            # تعديل: تغيير رسالة طلب رمز التحقق لتوضيح الصيغة المطلوبة
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="⏳ جاري إرسال رمز التحقق..."
-            )
-
-            result = await client.send_code_request(phone_number)
-
-            # Store phone_code_hash in user_data
-            context.user_data['phone_code_hash'] = result.phone_code_hash
-
-            # Store client in user_data
-            context.user_data['client'] = client
-
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="✅ تم إرسال رمز التحقق إلى تطبيق تيليجرام الخاص بك.\n"
-                     "⚠️ يرجى إدخال الرمز فوراً لتجنب انتهاء صلاحيته (أرقام فقط):"
+                text="✅ تم إرسال رمز التحقق إلى رقم هاتفك.\n\nيرجى إدخال الرمز بالصيغة التالية: 1 2 3 4 5"
             )
 
             return VERIFICATION_CODE
-
         except Exception as e:
-            self.logger.error(f"Error in generate_phone_number_handler: {str(e)}")
+            if client:
+                await client.disconnect()
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"❌ حدث خطأ: {str(e)}\n\n"
-                     "يرجى المحاولة مرة أخرى لاحقاً."
+                text=f"❌ حدث خطأ: {str(e)}\n\nيرجى المحاولة مرة أخرى."
             )
             return ConversationHandler.END
 
@@ -746,107 +705,69 @@ class AuthHandlers:
         chat_id = update.effective_chat.id
         code = update.message.text.strip()
 
-        # Clean the code - remove any non-digit characters
-        code = re.sub(r'\D', '', code)
-        self.logger.info(f"Cleaned verification code: {code}")
+        # تعديل: تنسيق الرمز بشكل صحيح قبل تنظيفه
+        # إذا كان الرمز لا يحتوي على مسافات، نضيف مسافات بين الأرقام
+        if ' ' not in code:
+            # إزالة أي أحرف غير رقمية أولاً
+            digits_only = re.sub(r'\D', '', code)
+            # إضافة مسافات بين الأرقام
+            formatted_code = ' '.join(digits_only)
+            self.logger.info(f"Formatted verification code: {formatted_code}")
+        else:
+            formatted_code = code
 
-        # Get client from user_data
-        client = context.user_data.get('client')
-        if not client:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="❌ حدث خطأ: لم يتم العثور على جلسة العميل.\n\n"
-                     "يرجى بدء العملية من جديد باستخدام /generate_session"
-            )
-            return ConversationHandler.END
+        # Clean the code - remove any non-digit characters
+        cleaned_code = re.sub(r'\D', '', code)
+        self.logger.info(f"Original verification code: {code}")
+        self.logger.info(f"Cleaned verification code: {cleaned_code}")
 
         # Show typing action to indicate processing
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
+        # Create client with provided credentials
+        client = None
         try:
-            # Try to sign in with the code
-            await client.sign_in(
-                phone=context.user_data['phone_number'],
-                code=code,
-                phone_code_hash=context.user_data.get('phone_code_hash')
-            )
+            client = TelegramClient(StringSession(), context.user_data['api_id'], context.user_data['api_hash'])
+            await client.connect()
+
+            if context.user_data.get('session_type') == 'bot':
+                # For bot session, the code is actually the bot token
+                await client.sign_in(bot_token=code)
+            else:
+                # For user session, sign in with phone and code
+                try:
+                    await client.sign_in(context.user_data['phone_number'], cleaned_code)
+                except SessionPasswordNeededError:
+                    # Two-step verification is enabled
+                    context.user_data['client'] = client
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text="🔐 هذا الحساب محمي بكلمة مرور. يرجى إدخال كلمة المرور:"
+                    )
+                    return PASSWORD
 
             # Get session string
             session_string = client.session.save()
-
-            # Disconnect
             await client.disconnect()
 
-            # Send session string to user
+            # Send session string
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="✅ تم تسجيل الدخول بنجاح وإنشاء الجلسة!\n\n"
-                     f"🔐 Session String: `{session_string}`\n\n"
-                     "⚠️ لا تشارك هذه الجلسة مع أي شخص آخر!",
+                text=f"✅ تم إنشاء Session String بنجاح!\n\n`{session_string}`\n\n"
+                     f"احتفظ بهذه السلسلة في مكان آمن ولا تشاركها مع أي شخص.",
                 parse_mode='Markdown'
             )
 
             return ConversationHandler.END
-
-        except SessionPasswordNeededError:
-            # Two-step verification is enabled
+        except Exception as e:
+            if client and client != context.user_data.get('client'):
+                await client.disconnect()
+            # تعديل: تغيير رسالة الخطأ لتوضيح الصيغة المطلوبة
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="التحقق بخطوتين مفعل.\n"
-                     "أدخل كلمة المرور الخاصة بالتحقق بخطوتين:"
-            )
-            return PASSWORD
-
-        except PhoneCodeInvalidError:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="❌ رمز التحقق غير صحيح. يرجى التأكد من الرمز وإدخاله مرة أخرى (أرقام فقط):"
+                text=f"❌ حدث خطأ: {str(e)}\n\nيرجى إدخال الرمز مرة أخرى بالصيغة التالية: 1 2 3 4 5"
             )
             return VERIFICATION_CODE
-
-        except PhoneCodeExpiredError:
-            # Code expired, request a new one
-            try:
-                # Reconnect client
-                if not client.is_connected():
-                    await client.connect()
-
-                # Send new code request
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="⏳ انتهت صلاحية رمز التحقق. جاري إرسال رمز جديد..."
-                )
-
-                result = await client.send_code_request(context.user_data['phone_number'])
-
-                # Store new phone_code_hash in user_data
-                context.user_data['phone_code_hash'] = result.phone_code_hash
-
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="✅ تم إرسال رمز تحقق جديد إلى تطبيق تيليجرام الخاص بك.\n"
-                         "⚠️ يرجى إدخال الرمز فوراً لتجنب انتهاء صلاحيته (أرقام فقط):"
-                )
-
-                return VERIFICATION_CODE
-
-            except Exception as e:
-                self.logger.error(f"Error requesting new code: {str(e)}")
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=f"❌ حدث خطأ أثناء طلب رمز جديد: {str(e)}\n\n"
-                         "يرجى المحاولة مرة أخرى لاحقاً باستخدام /generate_session"
-                )
-                return ConversationHandler.END
-
-        except Exception as e:
-            self.logger.error(f"Error in generate_verification_code_handler: {str(e)}")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"❌ حدث خطأ: {str(e)}\n\n"
-                     "يرجى المحاولة مرة أخرى لاحقاً."
-            )
-            return ConversationHandler.END
 
     async def generate_password_handler(self, update: Update, context: CallbackContext):
         """Handle password input for generate_session command"""
@@ -859,80 +780,125 @@ class AuthHandlers:
             message_id=update.message.message_id
         )
 
-        # Get client from user_data
+        # Show typing action to indicate processing
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
         client = context.user_data.get('client')
         if not client:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ حدث خطأ: لم يتم العثور على جلسة العميل.\n\n"
-                     "يرجى بدء العملية من جديد باستخدام /generate_session"
+                text="❌ حدث خطأ: لم يتم العثور على جلسة العميل. يرجى بدء العملية من جديد."
             )
             return ConversationHandler.END
 
-        # Show typing action to indicate processing
-        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-
         try:
-            # Try to sign in with password
+            # Sign in with password
             await client.sign_in(password=password)
 
             # Get session string
             session_string = client.session.save()
-
-            # Disconnect
             await client.disconnect()
 
-            # Send session string to user
+            # Send session string
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="✅ تم تسجيل الدخول بنجاح وإنشاء الجلسة!\n\n"
-                     f"🔐 Session String: `{session_string}`\n\n"
-                     "⚠️ لا تشارك هذه الجلسة مع أي شخص آخر!",
+                text=f"✅ تم إنشاء Session String بنجاح!\n\n`{session_string}`\n\n"
+                     f"احتفظ بهذه السلسلة في مكان آمن ولا تشاركها مع أي شخص.",
                 parse_mode='Markdown'
             )
 
             return ConversationHandler.END
-
         except Exception as e:
-            self.logger.error(f"Error in generate_password_handler: {str(e)}")
+            if client:
+                await client.disconnect()
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"❌ حدث خطأ: {str(e)}\n\n"
-                     "يرجى المحاولة مرة أخرى لاحقاً."
+                text=f"❌ حدث خطأ: {str(e)}\n\nيرجى المحاولة مرة أخرى."
             )
             return ConversationHandler.END
+
+    async def cancel_handler(self, update: Update, context: CallbackContext):
+        """Cancel the conversation"""
+        chat_id = update.effective_chat.id
+
+        # Clear any client in user_data
+        client = context.user_data.get('client')
+        if client:
+            try:
+                await client.disconnect()
+            except:
+                pass
+
+        # Clear user data
+        context.user_data.clear()
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ تم إلغاء العملية. يمكنك البدء مرة أخرى باستخدام /login أو /generate_session"
+        )
+
+        return ConversationHandler.END
 
     @subscription_required
     async def set_proxy_command(self, update: Update, context: CallbackContext):
         """Set proxy for the bot"""
         chat_id = update.effective_chat.id
+        args = context.args
 
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="🌐 لتعيين بروكسي، يرجى استخدام /login واختيار تسجيل الدخول باستخدام بروكسي."
-        )
+        if not args:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="⚠️ يرجى تحديد معلومات البروكسي بالصيغة التالية:\n\n"
+                     "/set_proxy نوع:عنوان:منفذ:اسم_المستخدم:كلمة_المرور\n\n"
+                     "مثال: /set_proxy socks5:proxy.example.com:1080:username:password\n\n"
+                     "الأنواع المدعومة: socks4, socks5, http\n"
+                     "اسم المستخدم وكلمة المرور اختيارية."
+            )
+            return
+
+        proxy = args[0]
+        try:
+            # Validate proxy format
+            parts = proxy.split(':')
+            if len(parts) < 3:
+                raise ValueError("يجب تحديد النوع والعنوان والمنفذ على الأقل")
+
+            proxy_type = parts[0].lower()
+            if proxy_type not in ['socks4', 'socks5', 'http']:
+                raise ValueError(f"نوع البروكسي غير مدعوم: {proxy_type}")
+
+            # Set proxy
+            self.proxy = proxy
+
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"✅ تم تعيين البروكسي: {proxy}"
+            )
+        except Exception as e:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"❌ حدث خطأ: {str(e)}\n\nيرجى التأكد من صيغة البروكسي."
+            )
 
     @subscription_required
     async def create_session_id_command(self, update: Update, context: CallbackContext):
-        """Create a session ID without logging in"""
+        """Create a new empty session ID"""
         chat_id = update.effective_chat.id
-        user_id = update.effective_user.id
+        args = context.args
 
-        # Check if user has API credentials
-        user = self.auth_service.users_collection.find_one({'user_id': user_id})
-        if not user or 'api_id' not in user or 'api_hash' not in user:
+        if not args or len(args) < 2:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="⚠️ لم يتم العثور على بيانات API الخاصة بك. يرجى استخدام /login أولاً."
+                text="⚠️ يرجى تحديد API ID و API Hash:\n\n"
+                     "/create_session_id API_ID API_HASH"
             )
             return
 
         try:
-            # Create client with user's API credentials
-            api_id = user['api_id']
-            api_hash = user['api_hash']
+            api_id = int(args[0])
+            api_hash = args[1]
 
-            # Create client with StringSession
+            # Create client with provided credentials
             client = TelegramClient(StringSession(), api_id, api_hash)
 
             # Connect without logging in
@@ -944,40 +910,14 @@ class AuthHandlers:
             # Disconnect
             await client.disconnect()
 
-            # Send session string to user
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"✅ تم إنشاء Session ID بنجاح!\n\n"
-                     f"🆔 Session ID: `{session_string}`\n\n"
-                     f"⚠️ ملاحظة: هذه الجلسة فارغة ولا يمكن استخدامها للتسجيل. استخدمها فقط للأغراض التي تتطلب Session ID.",
+                text=f"✅ تم إنشاء Session ID بنجاح!\n\n`{session_string}`\n\n"
+                     f"هذه الجلسة فارغة ولا يمكن استخدامها للتسجيل. استخدم /login لإكمال عملية تسجيل الدخول.",
                 parse_mode='Markdown'
             )
-
         except Exception as e:
-            self.logger.error(f"Error in create_session_id_command: {str(e)}")
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"❌ حدث خطأ أثناء إنشاء Session ID: {str(e)}"
+                text=f"❌ حدث خطأ: {str(e)}\n\nيرجى التأكد من صحة API ID و API Hash."
             )
-
-    async def cancel_handler(self, update: Update, context: CallbackContext):
-        """Cancel the conversation"""
-        chat_id = update.effective_chat.id
-
-        # Clean up any client connections
-        client = context.user_data.get('client')
-        if client and hasattr(client, 'disconnect'):
-            try:
-                await client.disconnect()
-            except:
-                pass
-
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="❌ تم إلغاء العملية. يمكنك المحاولة مرة أخرى لاحقاً."
-        )
-
-        # Clear user_data
-        context.user_data.clear()
-
-        return ConversationHandler.END
