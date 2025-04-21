@@ -158,7 +158,12 @@ class EnhancedChannelSubscription:
                     temp_bot = Bot(token=str(bot))
                     chat_member = await temp_bot.get_chat_member(chat_id=self.required_channel, user_id=user_id)
                 else:
-                    chat_member = await bot.get_chat_member(chat_id=self.required_channel, user_id=user_id)
+                    # تعديل: التحقق من وجود get_chat_member قبل استخدامه
+                    if hasattr(bot, 'get_chat_member'):
+                        chat_member = await bot.get_chat_member(chat_id=self.required_channel, user_id=user_id)
+                    else:
+                        logger.error(f"خطأ: الكائن bot لا يحتوي على طريقة get_chat_member")
+                        return False
                     
                 # التحقق من حالة العضوية
                 status = chat_member.status
@@ -187,11 +192,16 @@ class EnhancedChannelSubscription:
                 # التحقق من صلاحيات البوت في القناة
                 chat_member = await temp_bot.get_chat_member(chat_id=self.required_channel, user_id=bot_id)
             else:
-                # الحصول على معرف البوت
-                bot_info = await bot.get_me()
-                bot_id = bot_info.id
-                # التحقق من صلاحيات البوت في القناة
-                chat_member = await bot.get_chat_member(chat_id=self.required_channel, user_id=bot_id)
+                # تعديل: التحقق من وجود get_me و get_chat_member قبل استخدامهما
+                if hasattr(bot, 'get_me') and hasattr(bot, 'get_chat_member'):
+                    # الحصول على معرف البوت
+                    bot_info = await bot.get_me()
+                    bot_id = bot_info.id
+                    # التحقق من صلاحيات البوت في القناة
+                    chat_member = await bot.get_chat_member(chat_id=self.required_channel, user_id=bot_id)
+                else:
+                    logger.error(f"خطأ: الكائن bot لا يحتوي على طرق get_me أو get_chat_member")
+                    return False, "خطأ في التحقق من صلاحيات البوت"
             
             status = chat_member.status
 
@@ -282,24 +292,30 @@ def auto_channel_subscription_required(func):
 
         # التحقق من اشتراك المستخدم
         if subscription_manager.is_mandatory_subscription():
-            is_subscribed = await subscription_manager.check_user_subscription(user_id, context.bot)
-            if not is_subscribed:
-                # إرسال رسالة الاشتراك الإجباري
-                channel = subscription_manager.get_required_channel()
+            # تعديل: التعامل مع الأخطاء عند التحقق من الاشتراك
+            try:
+                is_subscribed = await subscription_manager.check_user_subscription(user_id, context.bot)
+                if not is_subscribed:
+                    # إرسال رسالة الاشتراك الإجباري
+                    channel = subscription_manager.get_required_channel()
 
-                # إنشاء زر للاشتراك في القناة
-                keyboard = [
-                    [InlineKeyboardButton("🔔 الاشتراك في القناة", url=f"https://t.me/{channel[1:]}")],
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
+                    # إنشاء زر للاشتراك في القناة
+                    keyboard = [
+                        [InlineKeyboardButton("🔔 الاشتراك في القناة", url=f"https://t.me/{channel[1:]}")],
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
 
-                await update.effective_message.reply_text(
-                    f"⚠️ يجب عليك الاشتراك في {channel} للاستمرار.\n\n"
-                    "اضغط على الزر أدناه للاشتراك في القناة. سيتم التحقق تلقائياً من اشتراكك.",
-                    reply_markup=reply_markup
-                )
+                    await update.effective_message.reply_text(
+                        f"⚠️ يجب عليك الاشتراك في {channel} للاستمرار.\n\n"
+                        "اضغط على الزر أدناه للاشتراك في القناة. سيتم التحقق تلقائياً من اشتراكك.",
+                        reply_markup=reply_markup
+                    )
 
-                return None
+                    return None
+            except Exception as e:
+                logger.error(f"خطأ أثناء التحقق من اشتراك المستخدم: {str(e)}")
+                # في حالة حدوث خطأ، نسمح للمستخدم بالاستمرار
+                return await func(self, update, context, *args, **kwargs)
 
         return await func(self, update, context, *args, **kwargs)
 
