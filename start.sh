@@ -6,7 +6,7 @@ BOT_SCRIPT="bot.py"
 LOG_FILE="$BOT_DIR/bot_service.log"
 PID_FILE="$BOT_DIR/bot.pid"
 UPTIME_PID_FILE="$BOT_DIR/uptime.pid"
-TOKEN="7792142434:AAFPwfOx-6eULS6J1IAQ0wO0GO1cUtbIW3U"
+TOKEN="7792142434:AAEfvsNivSX7bLp1qXQmmDBugCv0n2N8jWw"
 
 # التأكد من وجود المجلدات اللازمة
 mkdir -p "$BOT_DIR/data"
