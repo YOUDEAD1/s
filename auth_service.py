@@ -68,7 +68,8 @@ class AuthService:
                         upsert=True  # إنشاء وثيقة جديدة إذا لم تكن موجودة
                     )
                     
-                    return (True, "تم إرسال رمز التحقق إلى رقم هاتفك. يرجى إدخال الرمز (يمكن إدخاله مع أو بدون مسافات).", None, phone_code_hash)
+                    # تعديل: تغيير رسالة التعليمات لتوضيح أن الرمز سيظهر بشكل 1 2 3 4 5
+                    return (True, "تم إرسال رمز التحقق إلى رقم هاتفك. يرجى إدخال الرمز بالصيغة التالية: 1 2 3 4 5", None, phone_code_hash)
                 except FloodWaitError as e:
                     wait_time = e.seconds
                     self.logger.error(f"FloodWaitError: Must wait {wait_time} seconds")
@@ -139,7 +140,8 @@ class AuthService:
                 if remaining_attempts <= 0:
                     return (False, "⚠️ لقد تجاوزت الحد الأقصى لمحاولات إدخال الرمز. يرجى استخدام الأمر /login للبدء من جديد.", None, None)
                 
-                return (False, f"❌ رمز التحقق غير صحيح. يرجى التأكد من الرمز وإدخاله مرة أخرى.\n\nمتبقي لديك {remaining_attempts} محاولات.", None, phone_code_hash)
+                # تعديل: تغيير رسالة الخطأ لتوضيح صيغة الرمز المطلوبة
+                return (False, f"❌ رمز التحقق غير صحيح. يرجى التأكد من الرمز وإدخاله بالصيغة التالية: 1 2 3 4 5\n\nمتبقي لديك {remaining_attempts} محاولات.", None, phone_code_hash)
             except PhoneCodeExpiredError:
                 self.logger.error("Phone code expired")
                 
@@ -194,7 +196,8 @@ class AuthService:
                         # إغلاق العميل الجديد
                         await new_client.disconnect()
                         
-                        return (False, f"❌ انتهت صلاحية رمز التحقق.\n\nتم إرسال رمز جديد إلى هاتفك. يرجى إدخال الرمز الجديد.\n\nمتبقي لديك {remaining_attempts} محاولات لإعادة إرسال الرمز.", None, new_phone_code_hash)
+                        # تعديل: تغيير رسالة الخطأ لتوضيح صيغة الرمز المطلوبة
+                        return (False, f"❌ انتهت صلاحية رمز التحقق.\n\nتم إرسال رمز جديد إلى هاتفك. يرجى إدخال الرمز الجديد بالصيغة التالية: 1 2 3 4 5\n\nمتبقي لديك {remaining_attempts} محاولات لإعادة إرسال الرمز.", None, new_phone_code_hash)
                     except Exception as e:
                         if new_client:
                             await new_client.disconnect()
@@ -250,7 +253,8 @@ class AuthService:
             if remaining_attempts <= 0:
                 return (False, "⚠️ لقد تجاوزت الحد الأقصى لمحاولات إدخال الرمز. يرجى استخدام الأمر /login للبدء من جديد.", None, None)
             
-            return (False, f"❌ رمز التحقق غير صحيح. يرجى التأكد من الرمز وإدخاله مرة أخرى.\n\nمتبقي لديك {remaining_attempts} محاولات.", None, phone_code_hash)
+            # تعديل: تغيير رسالة الخطأ لتوضيح صيغة الرمز المطلوبة
+            return (False, f"❌ رمز التحقق غير صحيح. يرجى التأكد من الرمز وإدخاله بالصيغة التالية: 1 2 3 4 5\n\nمتبقي لديك {remaining_attempts} محاولات.", None, phone_code_hash)
         except Exception as e:
             self.logger.error(f"Error in login_with_api_credentials: {str(e)}")
             return (False, f"❌ حدث خطأ أثناء تسجيل الدخول: {str(e)}", None, phone_code_hash)
@@ -321,134 +325,27 @@ class AuthService:
                 except:
                     pass
     
-    async def generate_session_string(self, api_id, api_hash, phone_number, code=None, password=None, proxy=None):
+    def get_user_session(self, user_id):
         """
-        Generate session string for user
-        Returns:
-            - (success, message, session_string) tuple
+        Get user session string from database
         """
-        client = None
-        try:
-            # Create client with provided credentials
-            if proxy:
-                proxy_type, proxy_addr, proxy_port, proxy_username, proxy_password = self._parse_proxy(proxy)
-                client = TelegramClient(
-                    StringSession(), 
-                    api_id, 
-                    api_hash,
-                    proxy=(proxy_type, proxy_addr, proxy_port, True, proxy_username, proxy_password)
-                )
-                self.logger.info(f"Using proxy: {proxy_addr}:{proxy_port}")
-            else:
-                client = TelegramClient(StringSession(), api_id, api_hash)
-            
-            await client.connect()
-            
-            # If code is not provided, send code request
-            if not code:
-                try:
-                    await client.send_code_request(phone_number)
-                    return (True, "تم إرسال رمز التحقق إلى رقم هاتفك. يرجى إدخال الرمز (يمكن إدخاله مع أو بدون مسافات).", None)
-                except FloodWaitError as e:
-                    wait_time = e.seconds
-                    self.logger.error(f"FloodWaitError: Must wait {wait_time} seconds")
-                    return (False, f"⚠️ تم تقييد حسابك مؤقتًا. يرجى الانتظار {wait_time} ثانية قبل المحاولة مرة أخرى.", None)
-            
-            # Clean and format the verification code
-            if code:
-                # تحسين معالجة الرمز للتعامل مع المسافات
-                # أولاً: إزالة المسافات فقط
-                code_without_spaces = code.replace(" ", "")
-                
-                # ثانياً: إزالة أي أحرف غير رقمية أخرى
-                cleaned_code = re.sub(r'\D', '', code_without_spaces)
-                
-                # سجل الرمز الأصلي والرمز بعد التنظيف
-                self.logger.info(f"Original verification code: {code}")
-                self.logger.info(f"Cleaned verification code: {cleaned_code}")
-                
-                # استخدم الرمز المنظف
-                code = cleaned_code
-            
-            # Try to sign in with the code
-            try:
-                await client.sign_in(phone_number, code)
-            except SessionPasswordNeededError:
-                # Two-step verification is enabled
-                self.logger.info("Two-step verification required")
-                if not password:
-                    return (False, "هذا الحساب محمي بكلمة مرور. يرجى إدخال كلمة المرور.", None)
-                
-                await client.sign_in(password=password)
-            except PhoneCodeInvalidError:
-                self.logger.error(f"Invalid phone code: {code}")
-                return (False, "❌ رمز التحقق غير صحيح. يرجى التأكد من الرمز وإدخاله مرة أخرى.", None)
-            except PhoneCodeExpiredError:
-                self.logger.error("Phone code expired")
-                
-                # Request a new code automatically
-                try:
-                    # إنشاء عميل جديد لطلب رمز جديد
-                    new_client = None
-                    try:
-                        if proxy:
-                            proxy_type, proxy_addr, proxy_port, proxy_username, proxy_password = self._parse_proxy(proxy)
-                            new_client = TelegramClient(
-                                StringSession(), 
-                                api_id, 
-                                api_hash,
-                                proxy=(proxy_type, proxy_addr, proxy_port, True, proxy_username, proxy_password)
-                            )
-                        else:
-                            new_client = TelegramClient(StringSession(), api_id, api_hash)
-                        
-                        await new_client.connect()
-                        await new_client.send_code_request(phone_number)
-                        
-                        # إغلاق العميل الجديد
-                        await new_client.disconnect()
-                        
-                        return (False, "❌ انتهت صلاحية رمز التحقق.\n\nتم إرسال رمز جديد إلى هاتفك. يرجى إدخال الرمز الجديد.", None)
-                    except Exception as e:
-                        if new_client:
-                            await new_client.disconnect()
-                        raise e
-                except FloodWaitError as e:
-                    wait_time = e.seconds
-                    self.logger.error(f"FloodWaitError: Must wait {wait_time} seconds")
-                    return (False, f"⚠️ تم تقييد حسابك مؤقتًا. يرجى الانتظار {wait_time} ثانية قبل المحاولة مرة أخرى.", None)
-                except Exception as e:
-                    self.logger.error(f"Error requesting new code: {str(e)}")
-                    return (False, f"❌ حدث خطأ أثناء طلب رمز جديد: {str(e)}", None)
-            except FloodWaitError as e:
-                wait_time = e.seconds
-                self.logger.error(f"FloodWaitError: Must wait {wait_time} seconds")
-                return (False, f"⚠️ تم تقييد حسابك مؤقتًا. يرجى الانتظار {wait_time} ثانية قبل المحاولة مرة أخرى.", None)
-            
-            # Get session string
-            session_string = client.session.save()
-            
-            # اختبار الجلسة للتأكد من صحتها
-            me = await client.get_me()
-            self.logger.info(f"Session validated for user: {me.first_name} {me.last_name if me.last_name else ''} (@{me.username if me.username else 'No username'})")
-            
-            await client.disconnect()
-            return (True, "✅ تم إنشاء جلسة بنجاح!", session_string)
-            
-        except Exception as e:
-            self.logger.error(f"Error in generate_session_string: {str(e)}")
-            return (False, f"❌ حدث خطأ أثناء إنشاء جلسة: {str(e)}", None)
-        finally:
-            # Always disconnect client
-            if client:
-                try:
-                    await client.disconnect()
-                except:
-                    pass
+        user = self.users_collection.find_one({'user_id': user_id})
+        if user and 'session_string' in user:
+            return user['session_string']
+        return None
+    
+    def clear_user_session(self, user_id):
+        """
+        Clear user session string from database
+        """
+        self.users_collection.update_one(
+            {'user_id': user_id},
+            {'$unset': {'session_string': ""}}
+        )
     
     async def check_session_validity(self, session_string, proxy=None):
         """
-        Check if a session string is valid
+        Check if session string is valid
         Returns:
             - (is_valid, message) tuple
         """
@@ -472,7 +369,7 @@ class AuthService:
             # Check if session is valid
             if not await client.is_user_authorized():
                 await client.disconnect()
-                return (False, "جلسة غير صالحة.")
+                return (False, "جلسة غير صالحة. يرجى تسجيل الدخول مرة أخرى.")
             
             # Get user info
             me = await client.get_me()
@@ -482,7 +379,7 @@ class AuthService:
             
         except Exception as e:
             self.logger.error(f"Error in check_session_validity: {str(e)}")
-            return (False, f"حدث خطأ أثناء التحقق من صلاحية الجلسة: {str(e)}")
+            return (False, f"❌ حدث خطأ أثناء التحقق من صلاحية الجلسة: {str(e)}")
         finally:
             # Always disconnect client
             if client:
@@ -491,65 +388,27 @@ class AuthService:
                 except:
                     pass
     
-    def get_user_session(self, user_id):
-        """
-        Get user session string from database
-        Returns:
-            - session_string or None
-        """
-        user_data = self.users_collection.find_one({'user_id': user_id})
-        if user_data and 'session_string' in user_data:
-            return user_data['session_string']
-        return None
-    
-    def clear_user_session(self, user_id):
-        """
-        Clear user session from database
-        """
-        self.users_collection.update_one(
-            {'user_id': user_id},
-            {'$unset': {
-                'session_string': "",
-                'phone_code_hash': "",
-                'code_request_time': "",
-                'code_resend_attempts': "",
-                'code_input_attempts': ""
-            }}
-        )
-    
     def _parse_proxy(self, proxy_str):
         """
-        Parse proxy string into components
-        Format: type:host:port:username:password
+        Parse proxy string in format: type:addr:port:username:password
         """
-        try:
-            parts = proxy_str.split(':')
-            
-            if len(parts) < 3:
-                self.logger.error("Invalid proxy format. Expected: type:host:port[:username:password]")
-                return None, None, None, None, None
-            
-            proxy_type = parts[0].lower()
-            proxy_host = parts[1]
-            proxy_port = int(parts[2])
-            
-            # Optional username and password
-            proxy_username = parts[3] if len(parts) > 3 else None
-            proxy_password = parts[4] if len(parts) > 4 else None
-            
-            # Map proxy type string to socks module constants
-            if proxy_type == 'socks4':
-                proxy_type = socks.SOCKS4
-            elif proxy_type == 'socks5':
-                proxy_type = socks.SOCKS5
-            elif proxy_type == 'http':
-                proxy_type = socks.HTTP
-            else:
-                self.logger.error(f"Unsupported proxy type: {proxy_type}")
-                return None, None, None, None, None
-            
-            return proxy_type, proxy_host, proxy_port, proxy_username, proxy_password
-            
-        except Exception as e:
-            self.logger.error(f"Error parsing proxy: {str(e)}")
-            return None, None, None, None, None
+        parts = proxy_str.split(':')
+        proxy_type = parts[0].lower()
+        proxy_addr = parts[1]
+        proxy_port = int(parts[2])
+        
+        # Username and password are optional
+        proxy_username = parts[3] if len(parts) > 3 else None
+        proxy_password = parts[4] if len(parts) > 4 else None
+        
+        # Convert proxy type string to socks.PROXY_TYPE_*
+        if proxy_type == 'socks4':
+            proxy_type = socks.PROXY_TYPE_SOCKS4
+        elif proxy_type == 'socks5':
+            proxy_type = socks.PROXY_TYPE_SOCKS5
+        elif proxy_type == 'http':
+            proxy_type = socks.PROXY_TYPE_HTTP
+        else:
+            raise ValueError(f"Unsupported proxy type: {proxy_type}")
+        
+        return proxy_type, proxy_addr, proxy_port, proxy_username, proxy_password
