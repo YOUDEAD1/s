@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 import uuid
 from db import Database
@@ -58,7 +59,8 @@ class SubscriptionService:
     def add_subscription(self, user_id, days=DEFAULT_SUBSCRIPTION_DAYS, added_by=None):
         user = self.get_user(user_id)
         if not user:
-            return False
+            # إنشاء مستخدم جديد إذا لم يكن موجوداً
+            user = self.create_user(user_id)
 
         # Add subscription days to user
         user.add_subscription_days(days)
@@ -68,6 +70,19 @@ class SubscriptionService:
         subscription = Subscription(user_id, days, added_by)
         self.subscriptions_collection.insert_one(subscription.to_dict())
 
+        return True
+
+    def remove_subscription(self, user_id):
+        """
+        إلغاء اشتراك المستخدم
+        """
+        user = self.get_user(user_id)
+        if not user:
+            return False
+
+        # إلغاء الاشتراك عن طريق تعيين تاريخ انتهاء الاشتراك إلى الآن
+        user.subscription_end = datetime.now()
+        self.save_user(user)
         return True
 
     def get_subscription_end_date(self, user_id):
@@ -107,6 +122,55 @@ class SubscriptionService:
         """
         users = self.users_collection.find({})
         return [User.from_dict(user) for user in users]
+
+    def get_total_users_count(self):
+        """
+        الحصول على إجمالي عدد المستخدمين
+        """
+        try:
+            return self.users_collection.count_documents({})
+        except Exception as e:
+            logging.error(f"خطأ في الحصول على عدد المستخدمين: {str(e)}")
+            return 0
+
+    def get_active_users_count(self):
+        """
+        الحصول على عدد المستخدمين النشطين (ذوي الاشتراك الفعال)
+        """
+        try:
+            current_time = datetime.now()
+            return self.users_collection.count_documents({
+                'subscription_end': {'$gt': current_time}
+            })
+        except Exception as e:
+            logging.error(f"خطأ في الحصول على عدد المستخدمين النشطين: {str(e)}")
+            return 0
+
+    def get_admin_users_count(self):
+        """
+        الحصول على عدد المشرفين
+        """
+        try:
+            return self.users_collection.count_documents({
+                'is_admin': True
+            })
+        except Exception as e:
+            logging.error(f"خطأ في الحصول على عدد المشرفين: {str(e)}")
+            return 0
+
+    def get_all_active_users(self):
+        """
+        الحصول على جميع المستخدمين النشطين
+        """
+        try:
+            current_time = datetime.now()
+            users = self.users_collection.find({
+                'subscription_end': {'$gt': current_time}
+            })
+            return [User.from_dict(user) for user in users]
+        except Exception as e:
+            logging.error(f"خطأ في الحصول على المستخدمين النشطين: {str(e)}")
+            return []
 
     def disable_channel_subscription(self):
         """
