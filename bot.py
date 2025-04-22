@@ -17,6 +17,7 @@ from monitoring_handlers import MonitoringHandlers
 from channel_subscription import enhanced_channel_subscription, setup_enhanced_subscription
 from error_handlers import setup_error_handlers
 from posting_service import PostingService
+from subscription_service import SubscriptionService
 from subscription_callbacks import register_subscription_callbacks
 
 # Configure logging
@@ -40,6 +41,9 @@ class Bot:
 
         # Setup error handlers
         setup_error_handlers(self.application)
+
+        # Initialize subscription service
+        self.subscription_service = SubscriptionService()
 
         # Initialize posting service
         self.posting_service = PostingService()
@@ -87,9 +91,17 @@ class Bot:
 
         # Subscription handlers
         self.subscription_handlers = SubscriptionHandlers(self.application)
+        
+        # تصحيح: تهيئة خدمة الاشتراك للمعالجات
+        if hasattr(self.subscription_handlers, 'set_subscription_service'):
+            self.subscription_handlers.set_subscription_service(self.subscription_service)
 
         # Admin handlers
         self.admin_handlers = AdminHandlers(self.application)
+        
+        # تصحيح: تعيين خدمة الاشتراك لمعالجات المشرف
+        if hasattr(self.admin_handlers, 'set_subscription_service'):
+            self.admin_handlers.set_subscription_service(self.subscription_service)
 
         # Monitoring handlers - must be initialized last to catch all messages
         self.monitoring_handlers = MonitoringHandlers(self.application)
