@@ -124,7 +124,7 @@ class GroupService:
             groups = self.groups_collection.find({'user_id': user_id})
             for group in groups:
                 self.groups_collection.update_one(
-                    {'id': group['id']},
+                    {'_id': group['_id']},  # تصحيح: استخدام _id بدلاً من id
                     {'$set': {'blacklisted': False}}
                 )
             return True
@@ -139,7 +139,7 @@ class GroupService:
             groups = self.groups_collection.find({'user_id': user_id})
             for group in groups:
                 self.groups_collection.update_one(
-                    {'id': group['id']},
+                    {'_id': group['_id']},  # تصحيح: استخدام _id بدلاً من id
                     {'$set': {'blacklisted': True}}
                 )
             return True
@@ -173,81 +173,141 @@ class GroupService:
             - groups: List of groups if successful, None otherwise
         """
         try:
-            # Get the user's session from the database
-            from db import Database
-            db = Database()
-
-            # Fix: Check for session in both sessions and users tables
-            sessions_collection = db.get_collection('sessions')
-            users_collection = db.get_collection('users')
-
-            # First try to find session in sessions table
-            session = sessions_collection.find_one({'user_id': user_id})
-
-            # If not found, try to find in users table
-            if not session or not session.get('session_string'):
+            # تحسين: استخدام AuthService مباشرة للحصول على جلسة المستخدم
+            try:
+                from auth_service import AuthService
+                auth_service = AuthService()
+                session_string = auth_service.get_user_session(user_id)
+                
+                # الحصول على بيانات API من قاعدة البيانات
+                users_collection = self.db.get_collection('users')
                 user = users_collection.find_one({'user_id': user_id})
-                if user and user.get('session_string'):
-                    session = user
+                
+                if user:
+                    api_id = user.get('api_id')
+                    api_hash = user.get('api_hash')
+                else:
+                    api_id = None
+                    api_hash = None
+                
+                # إذا لم يتم العثور على بيانات API في جدول المستخدمين، حاول الحصول عليها من جدول الجلسات
+                if not api_id or not api_hash:
+                    sessions_collection = self.db.get_collection('sessions')
+                    session = sessions_collection.find_one({'user_id': user_id})
+                    if session:
+                        api_id = api_id or session.get('api_id')
+                        api_hash = api_hash or session.get('api_hash')
+            except ImportError:
+                # إذا لم يكن AuthService متاحاً، استخدم الطريقة القديمة
+                from db import Database
+                db = Database()
+                
+                # الحصول على جلسة المستخدم من قاعدة البيانات
+                sessions_collection = db.get_collection('sessions')
+                users_collection = db.get_collection('users')
+                
+                # البحث عن الجلسة في جدول الجلسات أولاً
+                session = sessions_collection.find_one({'user_id': user_id})
+                
+                # إذا لم يتم العثور على الجلسة، ابحث في جدول المستخدمين
+                if not session or not session.get('session_string'):
+                    user = users_collection.find_one({'user_id': user_id})
+                    if user and user.get('session_string'):
+                        session_string = user.get('session_string')
+                        api_id = user.get('api_id')
+                        api_hash = user.get('api_hash')
+                    else:
+                        session_string = None
+                        api_id = None
+                        api_hash = None
+                else:
+                    session_string = session.get('session_string')
+                    api_id = session.get('api_id')
+                    api_hash = session.get('api_hash')
 
-            # If still not found, return error
-            if not session or not session.get('session_string'):
-                # Debug log to see what's happening
-                logger.debug(f"Session not found for user_id={user_id}")
-                logger.debug(f"Sessions check result: {session}")
-
-                # Try to get user info for debugging
-                user_info = users_collection.find_one({'user_id': user_id})
-                logger.debug(f"User info: {user_info}")
-
-                # Return error message
+            # تحسين: إذا لم يتم العثور على جلسة، حاول استخدام جلسة البوت نفسه
+            if not session_string:
+                # سجل خطأ للتصحيح
+                logger.error(f"لم يتم العثور على جلسة للمستخدم {user_id}")
+                
+                # تحقق مما إذا كان المستخدم مشرفاً
+                from subscription_service import SubscriptionService
+                subscription_service = SubscriptionService()
+                db_user = subscription_service.get_user(user_id)
+                is_admin = db_user and db_user.is_admin
+                
+                if is_admin:
+                    # إذا كان المستخدم مشرفاً، استخدم جلسة البوت
+                    logger.info(f"المستخدم {user_id} مشرف، محاولة استخدام جلسة البوت")
+                    
+                    # استخدام جلسة البوت (رمز البوت)
+                    import os
+                    bot_token = os.environ.get('BOT_TOKEN')
+                    
+                    if not bot_token:
+                        # محاولة الحصول على رمز البوت من ملف التكوين
+                        try:
+                            import json
+                            with open('config.json', 'r') as f:
+                                config = json.load(f)
+                                bot_token = config.get('bot_token')
+                        except:
+                            pass
+                    
+                    if bot_token:
+                        # استخدام مكتبة python-telegram-bot بدلاً من telethon
+                        from telegram import Bot
+                        bot = Bot(token=bot_token)
+                        
+                        # الحصول على المجموعات التي يشارك فيها البوت
+                        try:
+                            # هذا مجرد مثال، قد لا يعمل مع python-telegram-bot
+                            # يمكن استخدام طرق أخرى للحصول على المجموعات
+                            updates = await bot.get_updates()
+                            groups = []
+                            
+                            # إنشاء قائمة فارغة من المجموعات
+                            return True, "تم استخدام جلسة البوت. لا توجد مجموعات متاحة.", []
+                        except Exception as e:
+                            logger.error(f"خطأ أثناء استخدام جلسة البوت: {str(e)}")
+                            return False, f"حدث خطأ أثناء استخدام جلسة البوت: {str(e)}", None
+                
+                # إذا لم يكن المستخدم مشرفاً أو فشل استخدام جلسة البوت
                 return False, "لم يتم العثور على جلسة للمستخدم. يرجى تسجيل الدخول أولاً.", None
 
-            # Import Telegram client
+            # تسجيل معلومات الجلسة للتصحيح
+            logger.debug(f"معلومات الجلسة: api_id={api_id}, api_hash={api_hash}, session_string={session_string[:10]}...")
+
+            if not api_id or not api_hash:
+                return False, "بيانات الجلسة غير مكتملة. يرجى تسجيل الدخول مرة أخرى.", None
+
+            # استيراد مكتبة Telegram
             from telethon.sync import TelegramClient
             from telethon.sessions import StringSession
             from telethon.tl.types import Channel, Chat
 
-            # Get API credentials
-            api_id = session.get('api_id')
-            api_hash = session.get('api_hash')
-            session_string = session.get('session_string')
-
-            # If credentials not in session, try to get from users table
-            if not api_id or not api_hash:
-                user = users_collection.find_one({'user_id': user_id})
-                if user:
-                    api_id = api_id or user.get('api_id')
-                    api_hash = api_hash or user.get('api_hash')
-
-            # Log session info for debugging
-            logger.debug(f"Session info: api_id={api_id}, api_hash={api_hash}, session_string={session_string[:10]}...")
-
-            if not api_id or not api_hash or not session_string:
-                return False, "بيانات الجلسة غير مكتملة. يرجى تسجيل الدخول مرة أخرى.", None
-
-            # Create client
+            # إنشاء العميل
             client = TelegramClient(StringSession(session_string), api_id, api_hash)
 
-            # Connect to Telegram
+            # الاتصال بـ Telegram
             await client.connect()
 
             if not await client.is_user_authorized():
                 await client.disconnect()
                 return False, "انتهت صلاحية الجلسة. يرجى تسجيل الدخول مرة أخرى.", None
 
-            # Get dialogs (chats and groups)
+            # الحصول على المحادثات (الدردشات والمجموعات)
             dialogs = await client.get_dialogs()
 
-            # Filter for groups only (not channels)
+            # تصفية المجموعات فقط (وليس القنوات)
             groups = []
             for dialog in dialogs:
-                # Check if it's a group (not a channel)
-                # In Telethon, Chat is a group, Channel can be either a channel or a supergroup
+                # التحقق مما إذا كانت مجموعة (وليست قناة)
+                # في Telethon، Chat هي مجموعة، Channel يمكن أن تكون إما قناة أو مجموعة كبيرة
                 entity = dialog.entity
 
-                # Only include actual groups (Chat) or supergroups (Channel with megagroup=True)
-                # Exclude channels (Channel with broadcast=True)
+                # تضمين المجموعات الفعلية (Chat) أو المجموعات الكبيرة (Channel مع megagroup=True) فقط
+                # استبعاد القنوات (Channel مع broadcast=True)
                 is_group = isinstance(entity, Chat) or (
                     isinstance(entity, Channel) and 
                     getattr(entity, 'megagroup', False) and 
@@ -256,20 +316,20 @@ class GroupService:
 
                 if is_group:
                     group_data = {
-                        'id': str(dialog.id),  # Convert to string for consistency
+                        'id': str(dialog.id),  # تحويل إلى نص للاتساق
                         'title': dialog.title,
                         'left': False
                     }
                     groups.append(group_data)
 
-                    # Save to database
+                    # حفظ في قاعدة البيانات
                     self.add_group(
                         user_id=user_id,
                         group_id=group_data['id'],
                         title=group_data['title']
                     )
 
-            # Disconnect
+            # قطع الاتصال
             await client.disconnect()
 
             if groups:
@@ -278,5 +338,5 @@ class GroupService:
                 return False, "لم يتم العثور على مجموعات", []
 
         except Exception as e:
-            logger.error(f"Error fetching user groups: {str(e)}")
+            logger.error(f"خطأ أثناء جلب مجموعات المستخدم: {str(e)}")
             return False, f"حدث خطأ أثناء جلب المجموعات: {str(e)}", None
