@@ -1,8 +1,9 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CallbackContext, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram.ext import ContextTypes, MessageHandler, filters
+import asyncio
 import logging
-import os
 import json
+import os
 import datetime
 import threading
 
@@ -145,157 +146,122 @@ class EnhancedChannelSubscription:
 
     async def check_user_subscription(self, user_id, bot):
         """التحقق من اشتراك المستخدم في القناة المطلوبة"""
-        # تعديل: إذا لم يكن الاشتراك إجباري، نعتبر المستخدم مشترك
         if not self.is_mandatory_subscription():
             return True
 
         try:
             with channel_lock:
-                # تعديل: التعامل مع الأخطاء بشكل أفضل
-                try:
-                    # التحقق من نوع bot وإنشاء كائن Bot إذا كان رقمًا أو نصًا
-                    if isinstance(bot, (int, str)):
-                        # إذا كان bot عبارة عن رقم أو نص، قم بإنشاء كائن bot جديد
-                        from telegram import Bot
-                        temp_bot = Bot(token=str(bot))
-                        chat_member = await temp_bot.get_chat_member(chat_id=self.required_channel, user_id=user_id)
-                    else:
-                        # تعديل: التحقق من وجود get_chat_member قبل استخدامه
-                        if hasattr(bot, 'get_chat_member'):
-                            chat_member = await bot.get_chat_member(chat_id=self.required_channel, user_id=user_id)
-                        else:
-                            logger.error(f"خطأ: الكائن bot لا يحتوي على طريقة get_chat_member")
-                            # تعديل: إذا لم يكن هناك طريقة get_chat_member، نعتبر المستخدم مشترك
-                            return True
-                        
-                    # التحقق من حالة العضوية
-                    status = chat_member.status
-                    # المستخدم مشترك إذا كان عضواً أو مشرفاً أو مالكاً
-                    is_subscribed = status in ['member', 'administrator', 'creator']
-                    return is_subscribed
-                except Exception as e:
-                    logger.error(f"خطأ أثناء التحقق من اشتراك المستخدم {user_id}: {str(e)}")
-                    # تعديل: في حالة حدوث خطأ، نعتبر المستخدم مشترك لتجنب منع الوصول
-                    return True
-        except Exception as e:
-            logger.error(f"خطأ عام أثناء التحقق من اشتراك المستخدم {user_id}: {str(e)}")
-            # تعديل: في حالة حدوث خطأ، نعتبر المستخدم مشترك
-            return True
-
-    async def check_bot_is_admin(self, bot):
-        """التحقق مما إذا كان البوت مشرفاً في القناة المطلوبة"""
-        # تعديل: إذا لم يكن الاشتراك إجباري، نعتبر البوت مشرف
-        if not self.is_mandatory_subscription():
-            return True, "لم يتم تعيين قناة للاشتراك الإجباري"
-
-        try:
-            # تعديل: التعامل مع الأخطاء بشكل أفضل
-            try:
                 # التحقق من نوع bot وإنشاء كائن Bot إذا كان رقمًا أو نصًا
                 if isinstance(bot, (int, str)):
                     # إذا كان bot عبارة عن رقم أو نص، قم بإنشاء كائن bot جديد
                     from telegram import Bot
                     temp_bot = Bot(token=str(bot))
-                    # الحصول على معرف البوت
-                    bot_info = await temp_bot.get_me()
-                    bot_id = bot_info.id
-                    # التحقق من صلاحيات البوت في القناة
-                    chat_member = await temp_bot.get_chat_member(chat_id=self.required_channel, user_id=bot_id)
+                    chat_member = await temp_bot.get_chat_member(chat_id=self.required_channel, user_id=user_id)
                 else:
-                    # تعديل: التحقق من وجود get_me و get_chat_member قبل استخدامهما
-                    if hasattr(bot, 'get_me') and hasattr(bot, 'get_chat_member'):
-                        # الحصول على معرف البوت
-                        bot_info = await bot.get_me()
-                        bot_id = bot_info.id
-                        # التحقق من صلاحيات البوت في القناة
-                        chat_member = await bot.get_chat_member(chat_id=self.required_channel, user_id=bot_id)
-                    else:
-                        logger.error(f"خطأ: الكائن bot لا يحتوي على طرق get_me أو get_chat_member")
-                        # تعديل: إذا لم تكن هناك طرق مطلوبة، نعتبر البوت مشرف
-                        return True, "تم تجاوز التحقق من صلاحيات البوت"
-                
+                    chat_member = await bot.get_chat_member(chat_id=self.required_channel, user_id=user_id)
+                    
+                # التحقق من حالة العضوية
                 status = chat_member.status
-
-                # التحقق مما إذا كان البوت مشرفاً
-                if status == 'administrator':
-                    return True, f"البوت مشرف في القناة {self.required_channel}"
-                else:
-                    # تعديل: حتى لو لم يكن البوت مشرف، نسمح بالاستمرار
-                    logger.warning(f"البوت ليس مشرفاً في القناة {self.required_channel}")
-                    return True, f"البوت ليس مشرفاً في القناة {self.required_channel}. الرجاء ترقية البوت إلى مشرف."
-            except Exception as e:
-                logger.error(f"خطأ أثناء التحقق من صلاحيات البوت: {str(e)}")
-                # تعديل: في حالة حدوث خطأ، نعتبر البوت مشرف
-                return True, f"تم تجاوز التحقق من صلاحيات البوت: {str(e)}"
+                # المستخدم مشترك إذا كان عضواً أو مشرفاً أو مالكاً
+                is_subscribed = status in ['member', 'administrator', 'creator']
+                return is_subscribed
         except Exception as e:
-            logger.error(f"خطأ عام أثناء التحقق من صلاحيات البوت: {str(e)}")
-            # تعديل: في حالة حدوث خطأ، نعتبر البوت مشرف
-            return True, f"تم تجاوز التحقق من صلاحيات البوت: {str(e)}"
+            logger.error(f"خطأ أثناء التحقق من اشتراك المستخدم {user_id}: {str(e)}")
+            # في حالة حدوث خطأ، نفترض أن المستخدم غير مشترك
+            return False
 
-    async def subscription_middleware(self, update: Update, context: CallbackContext):
-        """وسيط للتحقق من اشتراك المستخدم قبل معالجة الرسائل"""
-        # تعديل: التعامل مع الأخطاء بشكل أفضل
+    async def check_bot_is_admin(self, bot):
+        """التحقق مما إذا كان البوت مشرفاً في القناة المطلوبة"""
+        if not self.is_mandatory_subscription():
+            return True, "لم يتم تعيين قناة للاشتراك الإجباري"
+
         try:
-            # تجاهل التحديثات التي ليست رسائل أو أوامر
-            if not update.effective_message:
-                return
-
-            # تجاهل التحديثات من المحادثات الجماعية
-            if update.effective_chat.type != "private":
-                return
-
-            # تجاهل التحقق إذا كان الاشتراك غير إجباري
-            if not self.is_mandatory_subscription():
-                return
-
-            # الحصول على معرف المستخدم
-            user_id = update.effective_user.id if update.effective_user else None
-            if not user_id:
-                return
-
-            # تعديل: التعامل مع الأخطاء عند التحقق من المشرف
-            try:
-                # التحقق من المشرف (المشرفون معفون من التحقق)
-                from subscription_service import SubscriptionService
-                subscription_service = SubscriptionService()
-                db_user = subscription_service.get_user(user_id)
-                is_admin = db_user and db_user.is_admin
-                if is_admin:
-                    return
-            except Exception as e:
-                logger.error(f"خطأ أثناء التحقق من حالة المشرف: {str(e)}")
-                # في حالة حدوث خطأ، نسمح للمستخدم بالاستمرار
-                return
-
-            # التحقق من اشتراك المستخدم
-            is_subscribed = await self.check_user_subscription(user_id, context.bot)
-            if not is_subscribed:
-                # إرسال رسالة الاشتراك الإجباري
-                channel = self.get_required_channel()
-
-                # إنشاء زر للاشتراك في القناة فقط (بدون زر التحقق)
-                keyboard = [
-                    [InlineKeyboardButton("🔔 الاشتراك في القناة", url=f"https://t.me/{channel[1:]}")],
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-
-                await update.effective_message.reply_text(
-                    f"⚠️ يجب عليك الاشتراك في {channel} للاستمرار.\n\n"
-                    "اضغط على الزر أدناه للاشتراك في القناة. سيتم التحقق تلقائياً من اشتراكك.",
-                    reply_markup=reply_markup
-                )
-
-                # منع معالجة الرسالة
-                import asyncio
-                raise asyncio.CancelledError("تم إلغاء معالجة الرسالة بسبب عدم الاشتراك في القناة")
-        except Exception as e:
-            if "CancelledError" in str(e):
-                # إذا كان الخطأ هو CancelledError، نعيد رفعه
-                raise
+            # التحقق من نوع bot وإنشاء كائن Bot إذا كان رقمًا أو نصًا
+            if isinstance(bot, (int, str)):
+                # إذا كان bot عبارة عن رقم أو نص، قم بإنشاء كائن bot جديد
+                from telegram import Bot
+                temp_bot = Bot(token=str(bot))
+                # الحصول على معرف البوت
+                bot_info = await temp_bot.get_me()
+                bot_id = bot_info.id
+                # التحقق من صلاحيات البوت في القناة
+                chat_member = await temp_bot.get_chat_member(chat_id=self.required_channel, user_id=bot_id)
             else:
-                # إذا كان الخطأ من نوع آخر، نسجله ونسمح للمستخدم بالاستمرار
-                logger.error(f"خطأ في وسيط التحقق من الاشتراك: {str(e)}")
+                # الحصول على معرف البوت
+                bot_info = await bot.get_me()
+                bot_id = bot_info.id
+                # التحقق من صلاحيات البوت في القناة
+                chat_member = await bot.get_chat_member(chat_id=self.required_channel, user_id=bot_id)
+            
+            status = chat_member.status
+
+            # التحقق مما إذا كان البوت مشرفاً
+            if status == 'administrator':
+                return True, f"البوت مشرف في القناة {self.required_channel}"
+            else:
+                return False, f"البوت ليس مشرفاً في القناة {self.required_channel}. الرجاء ترقية البوت إلى مشرف."
+        except Exception as e:
+            logger.error(f"خطأ أثناء التحقق من صلاحيات البوت: {str(e)}")
+            return False, f"حدث خطأ أثناء التحقق من صلاحيات البوت: {str(e)}"
+
+    async def subscription_middleware(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """وسيط للتحقق من اشتراك المستخدم قبل معالجة الرسائل"""
+        # تجاهل التحديثات التي ليست رسائل أو أوامر
+        if not update.effective_message:
+            return
+
+        # تجاهل التحديثات من المحادثات الجماعية
+        if update.effective_chat.type != "private":
+            return
+
+        # تجاهل التحقق إذا كان الاشتراك غير إجباري
+        if not self.is_mandatory_subscription():
+            return
+
+        # الحصول على معرف المستخدم
+        user_id = update.effective_user.id if update.effective_user else None
+        if not user_id:
+            return
+
+        # التحقق من المشرف (المشرفون معفون من التحقق)
+        try:
+            from subscription_service import SubscriptionService
+            subscription_service = SubscriptionService()
+            db_user = subscription_service.get_user(user_id)
+            is_admin = db_user and db_user.is_admin
+            if is_admin:
                 return
+        except Exception as e:
+            logger.error(f"خطأ أثناء التحقق من حالة المشرف: {str(e)}")
+            # في حالة حدوث خطأ، نفترض أن المستخدم ليس مشرفاً
+
+        # التحقق من اشتراك المستخدم
+        is_subscribed = await self.check_user_subscription(user_id, context.bot)
+        
+        # إذا كان المستخدم غير مشترك، منعه من استخدام البوت إلا لأمر /start
+        if not is_subscribed:
+            # السماح فقط بأمر /start
+            if update.message and update.message.text and update.message.text.startswith('/start'):
+                # السماح بأمر /start
+                return
+            
+            # منع جميع الأوامر والرسائل الأخرى
+            channel = self.get_required_channel()
+
+            # إنشاء زر للاشتراك في القناة
+            keyboard = [
+                [InlineKeyboardButton("🔔 الاشتراك في القناة", url=f"https://t.me/{channel[1:]}")],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await update.effective_message.reply_text(
+                f"⚠️ يجب عليك الاشتراك في {channel} للاستمرار.\n\n"
+                "اضغط على الزر أدناه للاشتراك في القناة. سيتم التحقق تلقائياً من اشتراكك.",
+                reply_markup=reply_markup
+            )
+
+            # منع معالجة الرسالة
+            raise asyncio.CancelledError("تم إلغاء معالجة الرسالة بسبب عدم الاشتراك في القناة")
 
 # إنشاء كائن واحد للاستخدام في جميع أنحاء التطبيق
 subscription_manager = EnhancedChannelSubscription()
@@ -314,57 +280,48 @@ def auto_channel_subscription_required(func):
 
     @wraps(func)
     async def wrapped(self, update: Update, context: CallbackContext, *args, **kwargs):
-        # تعديل: التعامل مع الأخطاء بشكل أفضل
+        user_id = update.effective_user.id
+
+        # التحقق من المشرف (المشرفون معفون من التحقق)
         try:
-            user_id = update.effective_user.id
+            from subscription_service import SubscriptionService
+            subscription_service = SubscriptionService()
+            db_user = subscription_service.get_user(user_id)
+            is_admin = db_user and db_user.is_admin
 
-            # تعديل: التعامل مع الأخطاء عند التحقق من المشرف
-            try:
-                # التحقق من المشرف (المشرفون معفون من التحقق)
-                from subscription_service import SubscriptionService
-                subscription_service = SubscriptionService()
-                db_user = subscription_service.get_user(user_id)
-                is_admin = db_user and db_user.is_admin
-
-                if is_admin:
-                    return await func(self, update, context, *args, **kwargs)
-            except Exception as e:
-                logger.error(f"خطأ أثناء التحقق من حالة المشرف: {str(e)}")
-                # في حالة حدوث خطأ، نسمح للمستخدم بالاستمرار
+            if is_admin:
                 return await func(self, update, context, *args, **kwargs)
-
-            # التحقق من اشتراك المستخدم
-            if subscription_manager.is_mandatory_subscription():
-                # تعديل: التعامل مع الأخطاء عند التحقق من الاشتراك
-                try:
-                    is_subscribed = await subscription_manager.check_user_subscription(user_id, context.bot)
-                    if not is_subscribed:
-                        # إرسال رسالة الاشتراك الإجباري
-                        channel = subscription_manager.get_required_channel()
-
-                        # إنشاء زر للاشتراك في القناة
-                        keyboard = [
-                            [InlineKeyboardButton("🔔 الاشتراك في القناة", url=f"https://t.me/{channel[1:]}")],
-                        ]
-                        reply_markup = InlineKeyboardMarkup(keyboard)
-
-                        await update.effective_message.reply_text(
-                            f"⚠️ يجب عليك الاشتراك في {channel} للاستمرار.\n\n"
-                            "اضغط على الزر أدناه للاشتراك في القناة. سيتم التحقق تلقائياً من اشتراكك.",
-                            reply_markup=reply_markup
-                        )
-
-                        return None
-                except Exception as e:
-                    logger.error(f"خطأ أثناء التحقق من اشتراك المستخدم: {str(e)}")
-                    # في حالة حدوث خطأ، نسمح للمستخدم بالاستمرار
-                    return await func(self, update, context, *args, **kwargs)
-
-            return await func(self, update, context, *args, **kwargs)
         except Exception as e:
-            logger.error(f"خطأ عام في وسيط التحقق من الاشتراك: {str(e)}")
-            # في حالة حدوث خطأ، نسمح للمستخدم بالاستمرار
-            return await func(self, update, context, *args, **kwargs)
+            logger.error(f"خطأ أثناء التحقق من حالة المشرف: {str(e)}")
+            # في حالة حدوث خطأ، نفترض أن المستخدم ليس مشرفاً
+
+        # التحقق من اشتراك المستخدم
+        if subscription_manager.is_mandatory_subscription():
+            is_subscribed = await subscription_manager.check_user_subscription(user_id, context.bot)
+            if not is_subscribed:
+                # السماح فقط بأمر /start
+                if update.message and update.message.text and update.message.text.startswith('/start'):
+                    # السماح بأمر /start
+                    return await func(self, update, context, *args, **kwargs)
+                
+                # منع جميع الأوامر والرسائل الأخرى
+                channel = subscription_manager.get_required_channel()
+
+                # إنشاء زر للاشتراك في القناة
+                keyboard = [
+                    [InlineKeyboardButton("🔔 الاشتراك في القناة", url=f"https://t.me/{channel[1:]}")],
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
+                await update.effective_message.reply_text(
+                    f"⚠️ يجب عليك الاشتراك في {channel} للاستمرار.\n\n"
+                    "اضغط على الزر أدناه للاشتراك في القناة. سيتم التحقق تلقائياً من اشتراكك.",
+                    reply_markup=reply_markup
+                )
+
+                return None
+
+        return await func(self, update, context, *args, **kwargs)
 
     return wrapped
 
